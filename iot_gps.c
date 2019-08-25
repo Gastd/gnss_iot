@@ -11,7 +11,7 @@ set_interface_attribs (int fd, int speed, int parity)
         memset (&tty, 0, sizeof tty);
         if (tcgetattr (fd, &tty) != 0)
         {
-                printf ("error from tcgetattr", errno);
+                printf ("%d error from tcgetattr", errno);
                 return -1;
         }
 
@@ -80,4 +80,16 @@ int main()
 
         char buf [7];
         int n;
+
+        // print mesages
+        n = read (fd, buf, sizeof buf);         // read up to 7 characters if ready to read
+        if (n > 0)
+        {
+                //printf("quanti: %d\n", n);
+                int i;
+                for (i = 0; i < n; i++)
+                {
+                        printf("%c",buf[i]);
+                }
+        }
 }
