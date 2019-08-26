@@ -83,13 +83,15 @@ int main()
 
         // print mesages
         n = read (fd, buf, sizeof buf);         // read up to 7 characters if ready to read
+        printf("quanti: %d\n", n);
         if (n > 0)
         {
-                //printf("quanti: %d\n", n);
                 int i;
                 for (i = 0; i < n; i++)
                 {
                         printf("%c",buf[i]);
                 }
         }
+
+        return 0;
 }
