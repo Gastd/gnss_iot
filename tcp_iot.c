@@ -3,9 +3,6 @@
 #define TCP_OK      0
 #define TCP_ERROR   1
 
-// void *context;
-// void *requester;
-// char tcp_buffer[30];
 char *ip_connection = "tcp://localhost";
 char *tcp_port = "8888";
 
@@ -58,9 +55,6 @@ tcp_init_connection (char *ip, char *port)
 int
 tcp_close_connection ()
 {
-    // zmq_close (requester);
-    // zmq_ctx_destroy (context);
-
     close (sock);
 
     return TCP_OK;
