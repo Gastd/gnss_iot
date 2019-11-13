@@ -1,61 +1,33 @@
-#include <czmq.h>
-#include <termios.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <string.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <errno.h>
+#include "state_machine.h"
 
-#define FSM_OK      0
-#define FSM_ERROR   1
+// char *token = 
+// "DE369E3C8DD238F8CAD9066E55C2DD2B6250F84ED23AB10135DA3AF91F31D720984B32AD3F4501E8A653DF4B83F8272D2B03FC5C6FB7A54CBB09DA3582A08450C3D71B5E33E2D7795A5A0CA29593AC20F1DC67CE4777EC8AC8F779840B6A9BE7";
 
-#define INIT  0
-#define LOGIN 1
-#define SETUP 2
-#define SINFO 3
-#define RINFO 4
+static fsm_state_iot_t m_state;
 
-typedef struct
-{
-    int time_limit;
-    int data_type;
-} Settings;
-
-typedef struct
-{
-    int current_state;
-    bool is_initialized;
-    bool login;
-    bool is_setted;
-    int send_request;
-    char *buffer;
-    unsigned int buf_len;
-    Settings current_setup;
-} State;
-
-char *token = 
-"DE369E3C8DD238F8CAD9066E55C2DD2B6250F84ED23AB10135DA3AF91F31D720984B32AD3F4501E8A653DF4B83F8272D2B03FC5C6FB7A54CBB09DA3582A08450C3D71B5E33E2D7795A5A0CA29593AC20F1DC67CE4777EC8AC8F779840B6A9BE7";
-
-State state;
+int fsm_init ();
+int fsm_send_setup ();
+int fsm_login ();
+int fsm_send_info ();
+int fsm_request_info ();
 
 int
 fsm_create ()
 {
-    state.current_state = INIT;
-    state.is_initialized = false;
-    state.login = false;
-    state.is_setted = true;
-    state.send_request = 0;
+    m_state.current_state = FSM_STATE_INIT;
+    m_state.is_initialized = false;
+    m_state.login = false;
+    m_state.is_setted = true;
+    m_state.send_request = 0;
 
     return FSM_OK;
 }
 
 int
-fsm_create_setup (settings setup)
+fsm_create_setup (fsm_settings_iot_t setup)
 {
-    state.current_setup = setup;
-    state.is_setted = false;
+    m_state.current_setup = setup;
+    m_state.is_setted = false;
     
     return FSM_OK;
 }
@@ -63,16 +35,16 @@ fsm_create_setup (settings setup)
 int
 fsm_init ()
 {
-    if (init_tcp_connection () == TCP_OK)
+    if (tcp_init_connection (NULL, NULL) == TCP_OK)
     {
-        state.is_initialized = true;
+        m_state.is_initialized = true;
         return FSM_OK;
     }
-    else
-    {
-        state.is_initialized = false;
-        return FSM_ERROR;
-    }
+    // else
+    // {
+    //     m_state.is_initialized = false;
+    //     return FSM_ERROR;
+    // }
 }
 
 int
@@ -84,46 +56,48 @@ fsm_send_setup ()
 void
 fsm_transition ()
 {
-    switch (state.current_state = INIT)
+    switch (m_state.current_state)
     {
-        case INIT:
-            if (fsm_init () == FSM_OK);
-                init_connection();
-                state.current_state = LOGIN;
+        case FSM_STATE_INIT:
+            if (fsm_init () == FSM_OK)
+            {
+                // init_connection ();
+                m_state.current_state = FSM_STATE_LOGIN;
+            }
             break;
 
-        case LOGIN:
+        case FSM_STATE_LOGIN:
             if (fsm_login () == FSM_OK)
             {
-                if (state.is_setted == true)
-                    state.current_state = SINFO;
+                if (m_state.is_setted == true)
+                    m_state.current_state = FSM_STATE_SINFO;
                 else
-                    state.current_state = SETUP;
+                    m_state.current_state = FSM_STATE_SETUP;
             }
             break;
 
-        case SETUP:
+        case FSM_STATE_SETUP:
             if (fsm_send_setup () == FSM_OK)
             {
-                state.current_state = SINFO;
+                m_state.current_state = FSM_STATE_SINFO;
             }
             break;
 
-        case SINFO:
+        case FSM_STATE_SINFO:
             if (fsm_send_info () == FSM_OK)
             {
-                tcp_send_position (state.buffer, state.buf_len);
-                state.current_state = RINFO;
-                // state.send_request = -1;
+                tcp_send_position (m_state.buffer, m_state.buf_len);
+                m_state.current_state = FSM_STATE_RINFO;
+                // m_state.send_request = -1;
             }
             break;
 
-        case RINFO:
+        case FSM_STATE_RINFO:
             if (fsm_request_info () == FSM_OK)
             {
-                tcp_rcv_correction (state.buffer, state.buf_len);
-                state.current_state = SINFO;
-                // state.send_request = 1;
+                tcp_rcv_correction (m_state.buffer, m_state.buf_len);
+                m_state.current_state = FSM_STATE_SINFO;
+                // m_state.send_request = 1;
             }
             break;
     }
@@ -137,14 +111,48 @@ init_connection ()
 {
     tcp_init_connection (NULL, NULL);
 
-    send_token (token, strlen (token));
+    tcp_send_token (m_state.current_setup.token, strlen (m_state.current_setup.token));
 }
 
-void
+int
+fsm_login ()
+{
+    if (tcp_send_token (m_state.current_setup.token, strlen (m_state.current_setup.token)) == TCP_OK )
+        return FSM_OK;
+    else
+        return FSM_ERROR;
+}
+
+int
 fsm_update_data (char *buffer, unsigned int len)
 {
-    state.buffer = buffer;
-    state.buf_len = len;
+    m_state.buffer = buffer;
+    m_state.buf_len = len;
 
     return FSM_OK;
+}
+
+int
+fsm_get_data (char *buffer, unsigned int len)
+{
+    memcpy(buffer, m_state.buffer, len);
+
+    return FSM_OK;
+}
+
+
+int fsm_send_info ()
+{
+    return FSM_OK;
+}
+
+int fsm_request_info ()
+{
+    return FSM_OK;
+}
+
+int
+fsm_end()
+{
+    tcp_close_connection ();
 }

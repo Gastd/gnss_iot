@@ -1,4 +1,3 @@
-#include <czmq.h>
 #include <termios.h>
 #include <fcntl.h>
 #include "tcp_iot.h"
@@ -7,13 +6,14 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <errno.h>
+#include "state_machine.h"
 
 #define MAX_BYTES  100
 
 typedef struct
 {
     uint8_t gps_time[10];
-    uint8_t llh[5][10];
+    uint8_t llh[4][10];
 } Buffer;
 
 double coord[2] = {0, 0};
@@ -24,7 +24,7 @@ uint8_t gps_data_[MAX_BYTES];
 
 Buffer buf;
 
-// char *str = "GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47\r\n";
+char *nmea_msg = "GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47\r\n";
 
 int
 nmea_parser(/* const char * message */)
@@ -126,6 +126,107 @@ nmea_parser(/* const char * message */)
     return data_ready;
 }
 
+int
+nmea_parser_fake( const char * message )
+{
+    uint8_t data_ready = 0, data_read, msg_length;
+
+    // for(int i = 0; (!data_ready)&&(i < MAX_BYTES); i++)
+    // {
+    //     if ((errno == read (fdd, &data_read, sizeof (uint8_t))) != 0)
+    //     {
+    //             printf ("ERROR: byte read failed\n");
+    //             break;
+    //     }
+
+    //     gps_data_[i] = data_read;
+
+    //     if ((gps_data_[i] == '\n') && (gps_data_[i-1] == '\r'))
+    //     {
+    //         data_ready = 1;
+    //         msg_length = i;
+    //     }
+    // }
+    msg_length = strlen(message);
+    strncpy(gps_data_, message, msg_length);
+
+    if (strncmp((const char *)gps_data_, "GPGGA", 5) == 0)
+    {
+        for(int i = 0, state = 0, begin = 0, end = 0; i < msg_length; ++i)
+        {
+            if (gps_data_[i] != ',')
+                continue;
+
+            switch (state)
+            {
+                case 0: // msg header
+                {
+                    state++;
+                    begin = i+1;
+                    break;
+                }
+                case 1: // utc gps time
+                {
+                    end = i;
+                    memcpy(&buf.gps_time, &gps_data_[begin], end - begin);
+                    buf.gps_time[end+1] = '\0';
+                    state++;
+                    begin = i+1;
+                    break;
+                }
+                case 2: // latitude
+                {
+                    end = i;
+                    memcpy(&buf.llh[0], &gps_data_[begin], end - begin);
+                    buf.llh[0][end+1] = '\0';
+                    state++;
+                    begin = i+1;
+                    break;
+                }
+                case 3: // noth or south
+                {
+                    end = i;
+                    memcpy(&buf.llh[1], &gps_data_[begin], end - begin);
+                    buf.llh[1][end+1] = '\0';
+                    state++;
+                    begin = i+1;
+                    break;
+                }
+                case 4: // logitude
+                {
+                    end = i;
+                    memcpy(&buf.llh[2], &gps_data_[begin], end - begin);
+                    buf.llh[2][end+1] = '\0';
+                    state++;
+                    begin = i+1;
+                    break;
+                }
+                case 5: // east or West
+                {
+                    end = i;
+                    memcpy(&buf.llh[3], &gps_data_[begin], end - begin);
+                    buf.llh[3][end+1] = '\0';
+                    state++;
+                    begin = i+1;
+                    break;
+                }
+                // case 2: // latitude
+                // {
+                //     end = i;
+                //     memcpy(time, &gps_data_[begin], end - begin);
+                // }
+            }
+
+        }
+    }
+
+    // printf ("time: %s\n", buf.gps_time);
+    // printf ("latitude: %s %s\n", buf.llh[0], buf.llh[1]);
+    // printf ("logitude: %s %s\n", buf.llh[2], buf.llh[3]);
+
+    return data_ready;
+}
+
 
 int
 set_interface_attribs (int fd, int speed, int parity)
@@ -191,7 +292,7 @@ uint32_t ByteSwap (uint32_t n)
    return ( ((n & 0x000000FF)<<24) + ((n & 0x0000FF00)<<8) + ((n & 0x00FF0000)>>8) + (( n & 0xFF000000)>>24) );
 }
 
-char *token = "2B03FC5C6FB7A54CBB09DA3582A08450";
+char *dev_token = "44CBFA8583976546994071A680C01C5A";
 
 // int xmain()
 // {
@@ -294,17 +395,31 @@ char *token = "2B03FC5C6FB7A54CBB09DA3582A08450";
 
 int main()
 {
-    tcp_init_connection (NULL, NULL);
+    fsm_settings_iot_t dev_setup = 
+    {
+        .time_limit = -1,
+        .data_type  = -1,
+        .token      = dev_token
+    };
 
-    tcp_send_token (token, strlen (token));
+    fsm_create ();
+    fsm_create_setup (dev_setup);
+    fsm_transition ();
+    char temp[30], aux[30];
 
     while (1)
     {
-        tcp_send_position (coord, sizeof (coord));
-        tcp_rcv_correction (coord, sizeof (coord));
-        printf ("%f\n", coord[0]);
-        printf ("%f\n", coord[1]);
+        nmea_parser_fake (nmea_msg);
+        sprintf (temp, "%s %s", (char *)buf.llh[0], (char *)buf.llh[2]);
+        printf ("w/o correction: %s\n", temp);
+        fsm_update_data (temp, 30);
+        fsm_transition ();
+        fsm_get_data (temp, 30);
+        temp[29] = '\0';
+        printf ("with correction: %s\n", temp);
+        sleep (1);
     }
-    tcp_close_connection ();
+
+    fsm_end ();
     return 0;
 }
