@@ -37,11 +37,11 @@ fsm_init ()
         m_state.is_initialized = true;
         return FSM_OK;
     }
-    // else
-    // {
-    //     m_state.is_initialized = false;
-    //     return FSM_ERROR;
-    // }
+    else
+    {
+        m_state.is_initialized = false;
+        return FSM_ERROR;
+    }
 }
 
 int
@@ -152,4 +152,6 @@ int
 fsm_end()
 {
     tcp_close_connection ();
+
+    return FSM_OK;
 }

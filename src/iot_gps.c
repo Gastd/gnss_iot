@@ -29,7 +29,7 @@ char *nmea_msg = "GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*
 int
 nmea_parser(/* const char * message */)
 {
-    uint8_t data_ready = 0, data_read, msg_length;
+    uint8_t data_ready = 0, data_read, msg_length = 0;
 
     for(int i = 0; (!data_ready)&&(i < MAX_BYTES); i++)
     {
@@ -129,7 +129,7 @@ nmea_parser(/* const char * message */)
 int
 nmea_parser_fake( const char * message )
 {
-    uint8_t data_ready = 0, data_read, msg_length;
+    uint8_t data_ready = 0, msg_length;
 
     // for(int i = 0; (!data_ready)&&(i < MAX_BYTES); i++)
     // {
@@ -148,7 +148,7 @@ nmea_parser_fake( const char * message )
     //     }
     // }
     msg_length = strlen(message);
-    strncpy(gps_data_, message, msg_length);
+    strncpy((char *) gps_data_, message, msg_length);
 
     if (strncmp((const char *)gps_data_, "GPGGA", 5) == 0)
     {
@@ -405,7 +405,7 @@ int main()
     fsm_create ();
     fsm_create_setup (dev_setup);
     fsm_transition ();
-    char temp[30], aux[30];
+    char temp[30];
 
     while (1)
     {

@@ -31,7 +31,7 @@ tcp_init_connection (char *ip, char *port)
     int PORT = atoi (tcp_port);
 
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(8888);
+    serv_addr.sin_port = htons(PORT);
 
     /* Convert IPv4 and IPv6 addresses from text to binary form */
     if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0)
@@ -66,7 +66,7 @@ tcp_send_token (const void *buf, unsigned int len)
     int acesso;
     send (sock, buf, len, 0);
     printf ("Accessing with token: %s\n", (char *)buf);
-    read(sock, &acesso, sizeof(acesso));
+    valread = read(sock, &acesso, sizeof(acesso));
     sleep (1);
 
     return TCP_OK;
@@ -83,8 +83,7 @@ tcp_send_position (const void *buf, unsigned int len)
 int
 tcp_rcv_correction (void *buf, unsigned int len)
 {
-    char* aux;
-    read (sock, buf, len);
+    valread = read (sock, buf, len);
 
     // memcpy (buf, buffer, len);
 
