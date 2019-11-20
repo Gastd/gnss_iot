@@ -32,8 +32,8 @@ int
 get_nmea(/* const char * message */)
 {
     uint8_t data_ready = 0, data_read, msg_length = 0;
-
-    for(int i = 0; (!data_ready)&&(i < MAX_BYTES); i++)
+    int i = 0, b = 0;
+    for(i = 0; (!data_ready)&&(i < MAX_BYTES); i++)
     {
         if ((errno == read (fdd, &data_read, sizeof (uint8_t))) != 0)
         {
@@ -41,88 +41,33 @@ get_nmea(/* const char * message */)
                 break;
         }
 
-        gps_data_[i] = data_read;
-
-        if ((gps_data_[i] == '\n') && (gps_data_[i-1] == '\r'))
+        if ((data_read == '$') && (b = 0))
         {
+            gps_data_[b] = data_read;
+            b++;
+        }
+        else if ((b < 0) && gps_data_[0] == '$')
+        {
+            gps_data_[b] = data_read;
+            b++;
+        }
+        else if ((data_read == '\n') && gps_data_[b-1] == '\r')
+        {
+            gps_data_[b] = data_read;
             data_ready = 1;
             msg_length = i;
+            b++;
+        }
+        else
+        {
+            b = 0;
         }
     }
     printf("%s", gps_data_);
-    if (strncmp((const char *)gps_data_, "GPGGA", 5) == 0)
-    {
-        for(int i = 0, state = 0, begin = 0, end = 0; i < msg_length; ++i)
-        {
-            if (gps_data_[i] != ',')
-                continue;
 
-            switch (state)
-            {
-                case 0: // msg header
-                {
-                    state++;
-                    begin = i+1;
-                    break;
-                }
-                case 1: // utc gps time
-                {
-                    end = i;
-                    memcpy(&buf.gps_time, &gps_data_[begin], end - begin);
-                    buf.gps_time[end+1] = '\0';
-                    state++;
-                    begin = i+1;
-                    break;
-                }
-                case 2: // latitude
-                {
-                    end = i;
-                    memcpy(&buf.llh[0], &gps_data_[begin], end - begin);
-                    buf.llh[0][end+1] = '\0';
-                    state++;
-                    begin = i+1;
-                    break;
-                }
-                case 3: // noth or south
-                {
-                    end = i;
-                    memcpy(&buf.llh[1], &gps_data_[begin], end - begin);
-                    buf.llh[1][end+1] = '\0';
-                    state++;
-                    begin = i+1;
-                    break;
-                }
-                case 4: // logitude
-                {
-                    end = i;
-                    memcpy(&buf.llh[2], &gps_data_[begin], end - begin);
-                    buf.llh[2][end+1] = '\0';
-                    state++;
-                    begin = i+1;
-                    break;
-                }
-                case 5: // east or West
-                {
-                    end = i;
-                    memcpy(&buf.llh[3], &gps_data_[begin], end - begin);
-                    buf.llh[3][end+1] = '\0';
-                    state++;
-                    begin = i+1;
-                    break;
-                }
-                // case 2: // latitude
-                // {
-                //     end = i;
-                //     memcpy(time, &gps_data_[begin], end - begin);
-                // }
-            }
-
-        }
-    }
-
-    printf ("time: %s\n", buf.gps_time);
-    printf ("latitude: %s %s\n", buf.llh[0], buf.llh[1]);
-    printf ("logitude: %s %s\n", buf.llh[2], buf.llh[3]);
+    // printf ("time: %s\n", buf.gps_time);
+    // printf ("latitude: %s %s\n", buf.llh[0], buf.llh[1]);
+    // printf ("logitude: %s %s\n", buf.llh[2], buf.llh[3]);
 
     return data_ready;
 }
@@ -232,7 +177,8 @@ nmea_parser_fake( const char * message )
                 printf(INDENT_SPACES "$xxGSA: HDOP (%d/%d)\n", frame.hdop.value, frame.hdop.scale);
                 printf(INDENT_SPACES "$xxGSA: VDOP (%d/%d)\n", frame.vdop.value, frame.vdop.scale);
                 printf(INDENT_SPACES "$xxGSA: PRNs used for fix ");
-                for (int i = 0; i < 12; i++)
+                int i = 0;
+                for (i = 0; i < 12; i++)
                     printf("%d, ", frame.sats[i]);
                 printf("\n");
             }
@@ -246,7 +192,8 @@ nmea_parser_fake( const char * message )
             if (minmea_parse_gsv(&frame, message)) {
                 printf(INDENT_SPACES "$xxGSV: message %d of %d\n", frame.msg_nr, frame.total_msgs);
                 printf(INDENT_SPACES "$xxGSV: sattelites in view: %d\n", frame.total_sats);
-                for (int i = 0; i < 4; i++)
+                int i = 0;
+                for (i = 0; i < 4; i++)
                     printf(INDENT_SPACES "$xxGSV: sat nr %d, elevation: %d, azimuth: %d, snr: %d dbm\n",
                         frame.sats[i].nr,
                         frame.sats[i].elevation,
@@ -301,10 +248,6 @@ nmea_parser_fake( const char * message )
             printf(INDENT_SPACES "$xxxxx sentence is not parsed\n");
         } break;
     }
-
-    // printf ("time: %s\n", buf.gps_time);
-    // printf ("latitude: %s %s\n", buf.llh[0], buf.llh[1]);
-    // printf ("logitude: %s %s\n", buf.llh[2], buf.llh[3]);
 
     return 0;
 }
@@ -369,111 +312,33 @@ set_blocking (int fd, int should_block)
             printf ("error %d setting term attributes\n", errno);
 }
 
-uint32_t ByteSwap (uint32_t n)
-{ 
-   return ( ((n & 0x000000FF)<<24) + ((n & 0x0000FF00)<<8) + ((n & 0x00FF0000)>>8) + (( n & 0xFF000000)>>24) );
-}
-
-char *dev_token = "44CBFA8583976546994071A680C01C5A";
-
-// int xmain()
-// {
-//     void *ctx = zmq_ctx_new();
-//     void *sock = zmq_socket(ctx, ZMQ_STREAM);
-//     int rc = zmq_connect(sock, "tcp://127.0.0.1:5555");
-//     if (rc != 0)
-//         printf ("%s", zmq_strerror(zmq_errno()));
-//     assert(rc == 0);
-
-//     // Retrieve the socket identity. This is important in this
-//     // particular scenario because when sending data using a
-//     // 'ZMQ_STREAM' socket the implementation uses the first
-//     // frame as the *identity* to route the message to. The ZMQ
-//     // implementation strips off this first frame before sending
-//     // the data to the endpoint.
-//     //char *identity = zsocket_identity (sock);
-
-//     // Must currently resort to the libzmq low-level lib to obtain
-//     // raw identity information because CZMQ is returning the binary
-//     // identity data as a char* and often there is 0 in the data which
-//     // prematurely terminates the char* data.
-//     uint8_t id [256];
-//     size_t id_size = 256;
-//     // rc = zmq_getsockopt (sock, ZMQ_IDENTITY, id, &id_size);
-//     assert (rc == 0);
-
-//     zframe_t *frame;
-//     while (!zctx_interrupted)
-//     {
-//         zmsg_t *msg = zmsg_new ();
-//         // Supply ZMQ with the identity to route the message to.
-//         zmsg_addmem (msg, id, id_size);
-//         // add message data.
-//         zmsg_addstr (msg, "Hello");
-//         zmsg_send(&msg, sock);
-
-
-//         // When receiving TCP data, a 'ZMQ_STREAM' socket shall 
-//         // prepend a frame containing the *identity* of the 
-//         // originating peer to the message before passing it to 
-//         // the application. Messages received are fair-queued from 
-//         // among all connected peers.
-//         //
-//         // So in a multi-connection environment our simple
-//         // assumption that we will receive a reply from the
-//         // endpoint we just sent a message to is naive but will
-//         // suffice for this simple test.
-
-//         // Read off the *identity* first
-//         frame = zframe_recv (sock);
-//         if (!frame)
-//             break; // interrupted
-//         zframe_destroy (&frame);
-
-//         // Now read off the message.
-//         char *response = zstr_recv (sock);
-//         printf ("Response: %s\n", response);
-//         free (response);
-
-//         // crude delay between consequtive requests
-//         zclock_sleep (2000);
-//     }
-
-//     // zmq_ctx_destroy (&ctx);
-//     return 0;
-
-
-//     // for (request_nbr = 0; request_nbr != 10; request_nbr++) {
-//     //     printf ("Sending Hello %ld…\n", strlen (token));
-//     //     zmq_send (socket, token, 33, 0);
-//     //     zmq_recv (socket, buffer, 4, 0);
-//     //     printf ("Received World %d\n", request_nbr);
-//     //     buffer[29] = '\0';
-//     //     printf ("buffer: %s\n", buffer);
-//     //     sleep (2);
-//     // }
-
-//     // zmq_close (socket);
-//     // zmq_ctx_destroy (context);
-//     // return 0;
-
-//     char *portname = "/dev/ttyS0";
-
-//     int fd = open (portname, O_RDWR | O_NOCTTY | O_SYNC);
-//     if (fd < 0)
-//     {
-//         printf("error %d opening %s: %s\n", errno, portname, strerror (errno));
-//         return 0;
-//     }
-
-//     // set_interface_attribs (fd, B115200, 0);       // set speed to 115,200 bps, 8n1 (no parity)
-//     set_interface_attribs (fd, B9600, 0);         // set speed to 9,600 bps, 8n1 (no parity)
-//     set_blocking (fd, 0);                         // set no blocking
-
-//     nmea_parser();
-
-//     return 0;
+// uint32_t ByteSwap (uint32_t n)
+// { 
+//    return ( ((n & 0x000000FF)<<24) + ((n & 0x0000FF00)<<8) + ((n & 0x00FF0000)>>8) + (( n & 0xFF000000)>>24) );
 // }
+
+// char *dev_token = "44CBFA8583976546994071A680C01C5A";
+/*
+int main()
+{
+    char *portname = "/dev/ttyACM0";
+
+    int fd = open (portname, O_RDWR | O_NOCTTY | O_SYNC);
+    if (fd < 0)
+    {
+        printf("error %d opening %s: %s\n", errno, portname, strerror (errno));
+        return 0;
+    }
+
+    // set_interface_attribs (fd, B115200, 0);       // set speed to 115,200 bps, 8n1 (no parity)
+    set_interface_attribs (fd, B9600, 0);         // set speed to 9,600 bps, 8n1 (no parity)
+    set_blocking (fd, 0);                         // set no blocking
+
+    nmea_parser();
+
+    return 0;
+}
+*/
 
 int main()
 {
