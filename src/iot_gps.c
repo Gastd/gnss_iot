@@ -48,7 +48,6 @@ get_nmea(/* const char * message */)
             data_ready = 1;
             msg_length = i;
         }
-
     }
     printf("%s", gps_data_);
     if (strncmp((const char *)gps_data_, "GPGGA", 5) == 0)
@@ -490,8 +489,23 @@ int main()
     fsm_transition ();
     char temp[30];
 
+    char *portname = "/dev/ttyACM0";
+
+    fdd = open (portname, O_RDWR | O_NOCTTY | O_SYNC);
+    if (fdd < 0)
+    {
+        printf("error %d opening %s: %s\n", errno, portname, strerror (errno));
+        return 0;
+    }
+
+    set_interface_attribs (fdd, B9600, 0);         // set speed to 9,600 bps, 8n1 (no parity)
+    set_blocking (fdd, 0);                         // set no blocking
+
+    nmea_parser();
+
     while (1)
     {
+        get_nmea ();
         nmea_parser_fake (nmea_msg);
         sprintf (temp, "%s %s", (char *)buf.llh[0], (char *)buf.llh[2]);
         printf ("w/o correction: %s\n", temp);
@@ -500,7 +514,7 @@ int main()
         fsm_get_data (temp, 30);
         temp[29] = '\0';
         printf ("with correction: %s\n", temp);
-        sleep (1);
+        // sleep (1);
     }
 
     fsm_end ();
