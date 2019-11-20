@@ -10,7 +10,7 @@ ExternalProject_Add(minmea
     GIT_TAG master
     # PREFIX ${CMAKE_CURRENT_BINARY_DIR}/minmea
     SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/minmea-src"
-    BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/serialcom-src/build"
+    BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/minmea-src/build"
     # CONFIGURE_COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" "${CMAKE_BINARY_DIR}/minmea-src/"
     BUILD_COMMAND "${CMAKE_COMMAND}" --build .
     INSTALL_COMMAND ""
