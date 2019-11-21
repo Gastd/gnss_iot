@@ -9,8 +9,8 @@
 #include "minmea.h"
 #include "state_machine.h"
 
-#define MAX_BYTES  100
-#define INDENT_SPACES "  "
+#define MAX_BYTES  MINMEA_MAX_LENGTH
+#define INDENT_SPACES "     "
 
 typedef struct
 {
@@ -33,52 +33,73 @@ get_nmea(/* const char * message */)
 {
     uint8_t data_ready = 0, data_read, msg_length = 0;
     int i = 0, b = 0;
+	memset(gps_data_, 0, sizeof gps_data_);
     for(i = 0; (!data_ready)&&(i < MAX_BYTES); i++)
     {
+		//printf("i = %d e b = %d\n", i, b);
+		
         if ((errno == read (fdd, &data_read, sizeof (uint8_t))) != 0)
         {
                 printf ("ERROR: byte read failed\n");
                 break;
         }
-
-        if ((data_read == '$') && (b = 0))
+		
+		//if ((data_read == 0x0a))
+		//	printf("YES\n");
+			
+        if ((data_read == '$') && (b == 0))
+        {
+            gps_data_[b] = data_read;
+            //printf("YES $\n");
+            b++;
+        }
+        else if ((b > 0) && gps_data_[0] == '$')
         {
             gps_data_[b] = data_read;
             b++;
         }
-        else if ((b < 0) && gps_data_[0] == '$')
+        else if ((data_read == '\n'))
         {
             gps_data_[b] = data_read;
+            gps_data_[b+1] = '\0';
             b++;
-        }
-        else if ((data_read == '\n') && gps_data_[b-1] == '\r')
-        {
-            gps_data_[b] = data_read;
             data_ready = 1;
-            msg_length = i;
-            b++;
+            msg_length = b;
+            //printf("YES final de linha\n");
+            break;
         }
         else
         {
             b = 0;
         }
+        if ((data_read == '\n'))
+        {
+            gps_data_[b] = data_read;
+            gps_data_[b+1] = '\0';
+			b++;
+            data_ready = 1;
+            msg_length = b;
+            //printf("YES final de linha\n");
+            break;
+        }
     }
-    printf("%s", gps_data_);
+    printf("gps_data_: %s", gps_data_);
 
     // printf ("time: %s\n", buf.gps_time);
     // printf ("latitude: %s %s\n", buf.llh[0], buf.llh[1]);
     // printf ("logitude: %s %s\n", buf.llh[2], buf.llh[3]);
 
-    return data_ready;
+    return msg_length;
 }
 
 int
-nmea_parser_fake( const char * message )
+nmea_parser_fake( const char * message, int len)
 {
     // msg_length = strlen(message);
-    // strncpy((char *) gps_data_, message, msg_length);
+    // char str[80];
+    // strncpy(str, message, len);
 
-    printf("%s", message);
+    printf("getting %d bytes in message: %s", len, message);
     switch (minmea_sentence_id(message, false)) {
         case MINMEA_SENTENCE_RMC: {
             struct minmea_sentence_rmc frame;
@@ -275,7 +296,7 @@ set_interface_attribs (int fd, int speed, int parity)
                                     // no canonical processing
     tty.c_oflag = 0;                // no remapping, no delays
     tty.c_cc[VMIN]  = 0;            // read doesn't block
-    tty.c_cc[VTIME] = 5;            // 0.5 seconds read timeout
+    tty.c_cc[VTIME] = 0;            // 0.5 seconds read timeout
 
     tty.c_iflag &= ~(IXON | IXOFF | IXANY); // shut off xon/xoff ctrl
 
@@ -303,10 +324,11 @@ set_blocking (int fd, int should_block)
     {
             printf ("error %d from tggetattr\n", errno);
             return;
+            return;
     }
 
     tty.c_cc[VMIN]  = should_block ? 1 : 0;
-    tty.c_cc[VTIME] = 5;            // 0.5 seconds read timeout
+    tty.c_cc[VTIME] = 0;            // 0.5 seconds read timeout
 
     if (tcsetattr (fd, TCSANOW, &tty) != 0)
             printf ("error %d setting term attributes\n", errno);
@@ -317,7 +339,7 @@ set_blocking (int fd, int should_block)
 //    return ( ((n & 0x000000FF)<<24) + ((n & 0x0000FF00)<<8) + ((n & 0x00FF0000)>>8) + (( n & 0xFF000000)>>24) );
 // }
 
-// char *dev_token = "44CBFA8583976546994071A680C01C5A";
+ char *dev_token = "44CBFA8583976546994071A680C01C5A";
 /*
 int main()
 {
@@ -364,21 +386,21 @@ int main()
     }
 
     set_interface_attribs (fdd, B9600, 0);         // set speed to 9,600 bps, 8n1 (no parity)
-    set_blocking (fdd, 0);                         // set no blocking
-
-    nmea_parser();
+    set_blocking (fdd, 1);                         // set no blocking
 
     while (1)
     {
-        get_nmea ();
-        nmea_parser_fake (nmea_msg);
-        sprintf (temp, "%s %s", (char *)buf.llh[0], (char *)buf.llh[2]);
-        printf ("w/o correction: %s\n", temp);
-        fsm_update_data (temp, 30);
-        fsm_transition ();
-        fsm_get_data (temp, 30);
-        temp[29] = '\0';
-        printf ("with correction: %s\n", temp);
+        int len = (int) get_nmea ();
+        //fgets(gps_data_, sizeof(gps_data_), fdd);
+        printf("len %d\n", len);
+        nmea_parser_fake (gps_data_, len);
+        //sprintf (temp, "%s %s", (char *)buf.llh[0], (char *)buf.llh[2]);
+        //printf ("w/o correction: %s\n", temp);
+        //fsm_update_data (temp, 30);
+        //fsm_transition ();
+        //fsm_get_data (temp, 30);
+        //temp[29] = '\0';
+        //printf ("with correction: %s\n", temp);
         // sleep (1);
     }
 
